@@ -1,0 +1,8 @@
+# Ignore certificates and Orace wallet files
+*.pem
+*.sso*
+*.p12*
+
+# Ignore settings files with sensitive data
+datadog-settings.yml*
+datadog-install-settings.yml*

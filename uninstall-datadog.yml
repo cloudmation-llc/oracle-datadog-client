@@ -1,0 +1,23 @@
+- hosts: localhost
+  gather_facts: no
+  vars_files:
+    - datadog-install-settings.yml
+  tasks:
+    - name: Load settings from datadog_settings.yml
+      include_vars: 
+        file: datadog-settings.yml
+        name: datadog_settings
+
+    - name: Uninstall objects and network ACEs from database
+      shell: |
+        sqlplus -s {{ oracle_connect_string }} <<EOF
+          whenever sqlerror exit sql.sqlcode;
+          @sql-install/remove-network-ace.sql {{ install_schema | upper }} '{{ wallet_path }}' '{{ datadog_settings.api_host }}' '{{ datadog_settings.logs_host }}';
+          drop package body {{ install_schema }}.datadog;
+          drop package {{ install_schema }}.datadog;
+          drop table {{ install_schema }}.datadog_settings;
+          exit;
+        EOF
+      args:
+        executable: /bin/bash
+      register: result_uninstall

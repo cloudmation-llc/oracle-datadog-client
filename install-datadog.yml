@@ -1,0 +1,110 @@
+- hosts: localhost
+  gather_facts: no
+  vars_files:
+    - datadog-install-settings.yml
+  tasks:
+    - name: Create DATADOG_SETTINGS table
+      shell: |
+        sqlplus -s {{ oracle_connect_string }} <<EOF
+          whenever sqlerror exit sql.sqlcode;
+          @sql-install/create-settings-table.sql {{ install_schema }};
+          exit;
+        EOF
+      args:
+        executable: /bin/bash
+      register: result_create_table
+      changed_when: result_create_table.rc != 187
+      failed_when: (result_create_table.rc != 187 and result_create_table.rc != 0) or result_create_table.stdout is search("SP2-[0-9]{4}")
+      tags:
+        - install
+
+    - name: Load settings from datadog_settings.yml
+      include_vars: 
+        file: datadog-settings.yml
+        name: datadog_settings
+      tags: always
+
+    - name: Upsert settings into DATADOG_SETTINGS table
+      shell: |
+        sqlplus -s {{ oracle_connect_string }} <<EOF
+          whenever sqlerror exit sql.sqlcode;
+          @sql-install/update-setting.sql {{ install_schema }} '{{ item.key }}' '{{ item.value }}';       
+          exit;
+        EOF
+      args:
+        executable: /bin/bash
+      loop: "{{ (datadog_settings | default({})) | dict2items }}"
+      when: result_create_table.changed | default(None) or 'update-settings' in ansible_run_tags
+      tags:
+        - install
+        - update-settings
+
+    - name: Install PL/SQL package
+      shell: |
+        sqlplus -s {{ oracle_connect_string }} <<EOF
+          whenever sqlerror exit sql.sqlcode;
+          @datadog.pkg.sql {{ install_schema}};
+          show errors;
+          exit;
+        EOF
+      args:
+        executable: /bin/bash
+      register: result_plsql_package
+      failed_when: result_plsql_package.stdout is search("SP2-[0-9]{4}") or result_plsql_package.stdout is search("compilation errors")
+      tags:
+        - install
+        - build-plsql
+
+    - name: Create and configure Oracle wallet
+      block:
+        - name: Check for existing Oracle wallet
+          stat:
+            path: "{{ wallet_path }}"
+          register: file_wallet
+
+        - name: Check for existing Oracle wallet backup
+          stat:
+            path: "{{ wallet_path }}-backup"
+          register: file_wallet_backup
+
+        - name: Backup the current Oracle wallet if none exists
+          copy:
+            src: "{{ wallet_path }}/"
+            dest: "{{ wallet_path }}-backup"
+          when: file_wallet.stat.exists and not file_wallet_backup.stat.exists
+
+        - name: Download latest certificate chain for Datadog
+          shell: |
+            python3 extract-certificate-chain.py {{ datadog_settings.api_host }}
+          args:
+            executable: /bin/bash
+
+        - name: Delete the current Oracle wallet
+          file:
+            path: "{{ wallet_path }}"
+            state: absent
+
+        - name: Create new Oracle wallet with latest certificate
+          shell: |
+            orapki wallet create -wallet "{{ wallet_path }}" -pwd "{{ wallet_password }}" -auto_login
+            orapki wallet add -wallet "{{ wallet_path }}" -pwd "{{ wallet_password }}" -trusted_cert -cert {{ datadog_settings.api_host }}.2.pem  
+          args:
+            executable: /bin/bash
+      tags:
+        - install
+        - build-wallet
+
+    - name: Configure network ACEs permitting outbound access to Datadog API (create)
+      shell: |
+        sqlplus -s {{ oracle_connect_string }} <<EOF
+          whenever sqlerror exit sql.sqlcode;
+          @sql-install/create-network-ace.sql {{ install_schema | upper }} '{{ wallet_path }}' '{{ datadog_settings.api_host }}' '{{ datadog_settings.logs_host }}';
+          exit;
+        EOF
+      args:
+        executable: /bin/bash
+      register: result_acl
+      failed_when: result_acl.rc != 0
+      tags:
+        - install
+        - build-network-ace

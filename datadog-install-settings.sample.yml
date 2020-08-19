@@ -1,0 +1,13 @@
+# Provide a connect string in a format supported by SQL*Plus
+# (DBA level access is generally the way to go here)
+oracle_connect_string: sys/gradle@//localhost:1521/pdb_gradle as sysdba
+
+# Provide the schema where the objects can be installed
+install_schema: cloudmation
+
+# Provide a path where an Oracle Wallet can be created. It will store the Datadog root certificate
+# The wallet will need to be accessible to the database via UTP_HTTP.SET_WALLET.
+wallet_path: /home/oracle/oracle-datadog/datadog-api-wallet
+
+# Provide a password to secure the certificate wallet
+wallet_password: "#datadog#"
