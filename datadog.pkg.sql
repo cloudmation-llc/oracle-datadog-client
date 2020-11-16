@@ -149,8 +149,22 @@ create or replace package body &1..datadog as
         -- Read response
         utl_http.read_text(http_res, http_res_body);
 
+        -- Cleanup HTTP request
+        utl_http.end_response(http_res);
+
         -- Return response to caller
         return http_res_body;
+    exception
+        when others then
+            -- Cleanup HTTP request
+            utl_http.end_response(http_res);
+
+            dbms_output.put_line('An error occurred when sending an event to Datadog');
+            dbms_output.put_line(dbms_utility.format_error_stack());
+            dbms_output.put_line(dbms_utility.format_error_backtrace());
+
+            -- Send the exception up the call stack
+            raise;
     end;
 
     --
@@ -206,11 +220,6 @@ create or replace package body &1..datadog as
 
         -- Dump output for inspection
         dbms_output.put_line('Datadog response => ' || api_response);
-    exception
-        when others then
-            dbms_output.put_line('An error occurred when sending an event to Datadog');
-            dbms_output.put_line(dbms_utility.format_error_stack());
-            dbms_output.put_line(dbms_utility.format_error_backtrace());
     end;
 
     --
@@ -250,11 +259,6 @@ create or replace package body &1..datadog as
 
         -- Dump output for inspection
         dbms_output.put_line('Datadog response => ' || api_response);
-    exception
-        when others then
-            dbms_output.put_line('An error occurred when sending a log message to Datadog');
-            dbms_output.put_line(dbms_utility.format_error_stack());
-            dbms_output.put_line(dbms_utility.format_error_backtrace());
     end;
 
 end datadog;
