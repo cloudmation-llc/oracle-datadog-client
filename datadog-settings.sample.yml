@@ -4,19 +4,17 @@ api_host: "api.datadoghq.com"
 # Set the Datadog API key
 api_key: "FIXME"
 
-# Set the HTTPS host used by the Oracle UTL_HTTP for API calls
-# This should be a wildcard of the api_host key
-api_https_host: "*.api.datadoghq.com"
+# Set the HTTPS host used by the Oracle UTL_HTTP package for API calls
+api_https_host: "api.datadoghq.com"
 
 # Set the Datadog log ingest endpoint. Defaults to the US site APIs.
 logs_host: "http-intake.logs.datadoghq.com"
 
-# Set the HTTPS host used by the Oracle UTL_HTTP for log ingest
-# This should be a wildcard of the logs_host key
-logs_https_host: "*.logs.datadoghq.com"
+# Set the HTTPS host used by the Oracle UTL_HTTP package for log ingest
+logs_https_host: "logs.datadoghq.com"
 
 # Set the path to the wallet (should match datadog-install-settings.yml)
-wallet_dir: "FIXME"
+wallet_path: "file:FIXME"
 
 # Set the wallet password (should match datadog-install-settings.yml)
 wallet_password: "FIXME"
