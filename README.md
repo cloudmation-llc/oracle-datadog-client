@@ -5,6 +5,7 @@
 - [Datadog Client for Oracle Database](#datadog-client-for-oracle-database)
   - [Introduction](#introduction)
     - [Supported API Actions](#supported-api-actions)
+  - [Examples](#examples)
   - [Getting Started](#getting-started)
     - [Requirements](#requirements)
     - [Strongly Recommended](#strongly-recommended)
@@ -34,7 +35,34 @@ Learn more about Datadog at https://www.datadoghq.com
 * Sending events to the event stream
 * Sending log events
 
-Since most of the primitives needed to work with the Datadog API are created at install, it is trivial to support additional types of API calls.
+Since most of the primitives needed to work with the Datadog API are created at install, it is trivial to expand the use of this package with additional API calls.
+
+## Examples
+
+**Sending an event to the event stream (https://app.datadoghq.com/event/stream):**
+
+```sql
+begin
+    datadog.send_event(
+        pi_title => 'Test Alert from PL/SQL', /* Required */
+        pi_text => 'Hello world user=' || user, /* Required */
+        pi_alert_type => 'success'); /* Optional */
+end;
+/
+```
+
+See the Datadog API reference for [posting an event](https://docs.datadoghq.com/api/v1/events/#post-an-event) to learn about all of the supported parameters.
+
+**Sending a log event (https://app.datadoghq.com/logs):**
+
+```sql
+begin
+    datadog.send_log_message('Sample log message sent from PL/SQL');
+end;
+/
+```
+
+See the Datadog API reference for [sending logs](https://docs.datadoghq.com/api/v1/logs/#send-logs) to learn about all of the supported parameters.
 
 ## Getting Started
 
@@ -72,17 +100,7 @@ Using the Ansible playbook allows you to breeze right through all of the steps, 
   
 2. Install by running `ansible-playbook install-datadog.yml`
 
-3. Try it out by sending an event. A public synonym is created automatically at install, but you will need to `grant execute on datadog to ...` in order for database schemas to use it.
-
-```sql
-begin
-    datadog.send_event(
-        'Test Alert from PL/SQL',
-        'Hellllooo world from ' || user || '!',
-        pi_alert_type => 'success');
-end;
-/
-```
+3. Try it out by sending an event. See the examples above for simple calls that work simply by copying and pasting. A public synonym is created automatically at install, but you will need to `grant execute on datadog to ...` in order for database schemas to use it. 
 
 If the installation was successful, you will not receive any SQL errors, and Datadog will return a positive response indicating the event was accepted.
 
