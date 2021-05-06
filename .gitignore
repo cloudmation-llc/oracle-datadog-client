@@ -1,4 +1,4 @@
-# Ignore certificates and Orace wallet files
+# Ignore certificates and Oracle wallet files
 *.pem
 *.sso*
 *.p12*
