@@ -13,3 +13,6 @@ lightweight-client/config/*.yml
 
 # Ignore log files
 *.log
+
+# Ignore VSCode configuration
+.vscode
