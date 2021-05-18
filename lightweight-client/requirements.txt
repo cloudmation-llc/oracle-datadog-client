@@ -1,0 +1,4 @@
+cx_oracle
+loguru
+pyyaml
+requests

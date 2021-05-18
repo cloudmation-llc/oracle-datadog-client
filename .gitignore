@@ -6,3 +6,7 @@
 # Ignore settings files with sensitive data
 datadog-settings.yml*
 datadog-install-settings.yml*
+
+# Ignore config profiles for the lightweight client
+lightweight-client/config/*.yaml
+lightweight-client/config/*.yml
