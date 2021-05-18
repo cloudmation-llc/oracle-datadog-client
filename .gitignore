@@ -10,3 +10,6 @@ datadog-install-settings.yml*
 # Ignore config profiles for the lightweight client
 lightweight-client/config/*.yaml
 lightweight-client/config/*.yml
+
+# Ignore log files
+*.log
