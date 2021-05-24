@@ -1,4 +1,5 @@
 cx_oracle
 loguru
+pytz
 pyyaml
 requests
