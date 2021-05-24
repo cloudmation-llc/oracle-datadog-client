@@ -16,3 +16,6 @@ lightweight-client/config/*.yml
 
 # Ignore VSCode configuration
 .vscode
+
+# Ignore IDEA configuration
+.idea
