@@ -32,9 +32,7 @@ begin
         execute immediate 'create table &1..datadog_lwc_queue (
             event_timestamp timestamp default systimestamp,
             queue_status number(1) default 0,
-            endpoint_type varchar2(3 char) default ''api'',
-            api_url varchar2(128 char),
-            http_method varchar2(4 char) default ''post'',
+            endpoint_type varchar2(32 char) default ''post_event'',
             payload varchar2(2048 char),
             constraint ensure_payload_json check (payload is json))';
 
@@ -79,7 +77,8 @@ create or replace package &1..datadog_lwc as
         pi_host varchar2 default sys_context('USERENV', 'SERVER_HOST'),
         pi_source varchar2 default 'oracle',
         pi_service varchar2 default 'database-' || sys_context('USERENV', 'INSTANCE_NAME'),
-        pi_tags varchar2 default null);
+        pi_tags varchar2 default null,
+        pi_status varchar2 default 'info');
 
 end datadog_lwc;
 /
@@ -148,8 +147,8 @@ create or replace package body &1..datadog_lwc as
 
         -- Insert into queue table for processing
         insert into &1..datadog_lwc_queue
-        (api_url, payload)
-        values ('/api/v1/events', event_payload_str);
+        (endpoint_type, payload)
+        values ('post_event', event_payload_str);
     end;
 
     --
@@ -161,7 +160,8 @@ create or replace package body &1..datadog_lwc as
         pi_host varchar2 default sys_context('USERENV', 'SERVER_HOST'),
         pi_source varchar2 default 'oracle',
         pi_service varchar2 default 'database-' || sys_context('USERENV', 'INSTANCE_NAME'),
-        pi_tags varchar2 default null) as
+        pi_tags varchar2 default null,
+        pi_status varchar2 default 'info') as
 
         -- Local variables
         event_payload json_object_t := json_object_t();
@@ -172,6 +172,7 @@ create or replace package body &1..datadog_lwc as
         event_payload.put('hostname', pi_host);
         event_payload.put('ddsource', lower(pi_source));
         event_payload.put('service', lower(pi_service));
+        event_payload.put('status', pi_status);
 
         if pi_tags is not null then
             event_payload.put('ddtags', pi_tags);
@@ -182,8 +183,8 @@ create or replace package body &1..datadog_lwc as
 
         -- Insert into queue table for processing
         insert into &1..datadog_lwc_queue
-        (endpoint_type, api_url, payload)
-        values ('log', '/v1/input', event_payload_str);
+        (endpoint_type, payload)
+        values ('post_log_event', event_payload_str);
     end;
 
 end datadog_lwc;
