@@ -68,7 +68,7 @@ if __name__ == "__main__":
     else:
         logger.add(sys.stdout, level=args.log_level.upper())
 
-    logger.debug('Program arguments %s' % args)
+    logger.trace('Program arguments %s' % args)
 
     # Unpack config
     datadog_config = args.config_profile['datadog']
