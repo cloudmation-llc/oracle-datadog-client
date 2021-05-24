@@ -126,10 +126,14 @@ if __name__ == "__main__":
 
             # Select Datadog API method by endpoint type
             if endpoint_type == 'post_event':
+                # Add an event to the dashboard
                 datadog_send_event(**payload)
+
             elif endpoint_type == 'post_log_event':
+                # Ingest a log event with proper timestamp conversion
                 payload['date'] = convert_local_date_to_iso(timestamp)
                 datadog_send_log_event(**payload)
+
             else:
                 # Skip unsupported HTTP methods
                 logger.debug(f'event {rowid}: Unsupported endpoint type {endpoint_type}')
