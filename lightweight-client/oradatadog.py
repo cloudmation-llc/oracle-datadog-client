@@ -3,7 +3,9 @@
 import argparse
 import cx_Oracle
 import json
+import pytz
 import requests
+import socket
 import sys
 import yaml
 from loguru import logger
@@ -13,6 +15,30 @@ def load_config_profile_yaml(path):
     """Helper function to automatically load and parse a config profile via argparse"""
     with open(path) as config_file:
         return yaml.safe_load(config_file)
+
+def convert_local_date_to_iso(date):
+    """Helper function to convert a native DateTime to UTC ISO8601"""
+    return date.astimezone(tz=pytz.utc).isoformat()
+
+# noinspection PyBroadException
+def datadog_post(api_url, **kwargs):
+    """Helper function to send an API POST to Datadog"""
+    try:
+        print(kwargs)
+        response = requests.post(api_url, json=kwargs, headers=datadog_headers)
+        response.raise_for_status()
+        print(response.text)
+    except:
+        logger.exception('Datadog API request failed with an exception')
+        raise
+
+def datadog_send_event(**kwargs):
+    """Helper function to send a dashboard event to Datadog via REST API"""
+    datadog_post(f'''{datadog_config['api-endpoint']}/api/v1/events''', **kwargs)
+
+def datadog_send_log_event(**kwargs):
+    """Helper function to send a log event to Datadog via REST API"""
+    datadog_post(f'''{datadog_config['logs-endpoint']}/v1/input''', **kwargs)
 
 #
 # Program entrypoint if run directly from the command line
@@ -32,47 +58,52 @@ if __name__ == "__main__":
         required=True,
         type=load_config_profile_yaml)
 
-    parser.add_argument(
-        '--log-file',
-        help='Set the path to a log file instead of writing to standard out',
-        type=Path,
-        default=None)
-
-    parser.add_argument(
-        '--log-file-rotation',
-        help='If logging to a file is enabled, set the rotation frequency',
-        default='00:00')
-
-    parser.add_argument(
-        '--log-file-retention',
-        help='If logging to a file is enabled, set the rotation frequency',
-        default='14 days')
-
-    parser.add_argument(
-        '--log-level',
-        help='Set the log verbosity level',
-        default='warning')
-
     # Parse and validate command line arguments
     args = parser.parse_args()
+
+    # Unpack config
+    datadog_config: dict = args.config_profile['datadog']
+    logging_config: dict = args.config_profile['logging']
+    oracle_config: dict = args.config_profile['oracle']
+
+    # Unpack Datadog config
+    datadog_headers = {
+        'DD-API-KEY': datadog_config['api-key']
+    }
 
     # Configure logging
     logger.remove()
 
-    if args.log_file is not None:
+    # Unpack logging config
+    log_file_path: str = logging_config.get('file-path')
+    log_file_rotation: str = logging_config.get('file-rotation', '00:00')
+    log_file_retention: str = logging_config.get('file-retention', '14 days')
+    log_level: str = logging_config.get('level', 'info').upper()
+    log_forward_to_datadog: bool = logging_config.get('forward-to-datadog', False)
+
+    # Set up logging to a file if configured
+    if log_file_path is not None:
         logger.add(
-            args.log_file,
-            rotation=args.log_file_rotation,
-            retention=args.log_file_retention,
-            level=args.log_level.upper())
+            Path(log_file_path),
+            rotation=log_file_rotation,
+            retention=log_file_retention,
+            level=log_level)
     else:
-        logger.add(sys.stdout, level=args.log_level.upper())
+        logger.add(sys.stdout, level=log_level)
 
-    logger.trace('Program arguments %s' % args)
+    # Set up logging program diagnostics if configured
+    if log_forward_to_datadog:
+        def datadog_forwarder(message):
+            # Send diagnostic event
+            datadog_send_log_event(
+                date=convert_local_date_to_iso(message.record.get('time')),
+                ddsource=logging_config.get('datadog-source', 'oradatadog'),
+                hostname=socket.gethostname(),
+                message=message.record.get('message'),
+                service=logging_config.get('datadog-service'),
+                status=message.record.get('level').name)
 
-    # Unpack config
-    datadog_config = args.config_profile['datadog']
-    oracle_config = args.config_profile['oracle']
+        logger.add(datadog_forwarder, level=log_level)
 
     # Connect to Oracle database
     oracle = cx_Oracle.connect(
@@ -89,48 +120,29 @@ if __name__ == "__main__":
         logger.info('Executed query to check for pending events')
 
         # Iterate rows
-        for (rowid, timestamp, status, endpoint_type, api_url, api_http_method, payload) in rows:
+        for (rowid, timestamp, status, endpoint_type, payload_json_str) in rows:
             logger.debug(f'Processing event {rowid}')
 
-            # Select Datadog endpoint
-            if endpoint_type == 'log':
-                endpoint_url = datadog_config['logs-endpoint']
-            else:
-                endpoint_url = datadog_config['api-endpoint']
-            logger.debug(f'event {rowid}: Using {endpoint_url} for API endpoint')
+            # Parse event payload
+            payload = json.loads(payload_json_str)
 
-            # Select HTTP request method
-            if api_http_method == 'post':
-                http = requests.post
-            elif api_http_method == 'put':
-                http = requests.put
+            # Select Datadog API method by endpoint type
+            if endpoint_type == 'post_event':
+                datadog_send_event(**payload)
+            elif endpoint_type == 'post_log_event':
+                payload['date'] = convert_local_date_to_iso(timestamp)
+                datadog_send_log_event(**payload)
             else:
                 # Skip unsupported HTTP methods
-                logger.debug(f'event {rowid}: Unsupported HTTP method {api_http_method}')
+                logger.debug(f'event {rowid}: Unsupported endpoint type {endpoint_type}')
                 continue
 
-            try:
-                # Send Datadog API request
-                response = http(
-                    url=f'{endpoint_url}{api_url}',
-                    json=json.loads(payload),
-                    headers={
-                        'DD-API-KEY': datadog_config['api-key']
-                    })
-
-                # Check for errors
-                response.raise_for_status()
-                logger.trace(f'event {rowid}: HTTP delivery completed successfully')
-
-                # Update event status in queue table
-                with oracle.cursor() as update_cursor:
-                    update_cursor.execute('update datadog_lwc_queue set queue_status = 1 where rowid = :rid', rid=rowid)
+            # Update event status in queue table
+            with oracle.cursor() as update_cursor:
+                update_cursor.execute('update datadog_lwc_queue set queue_status = 1 where rowid = :rid', rid=rowid)
+                if not oracle_config.get('ignore-commit', False):
                     oracle.commit()
-                    logger.trace(f'event {rowid}: Oracle queue update completed successfully')
-
-                logger.info(f'event {rowid}: Completed successfully')
-            except:
-                logger.exception('Datadog API request failed with an exception')
+                logger.trace(f'event {rowid}: Oracle queue update completed successfully')
 
         logger.info(f'Processed {cursor.rowcount} row(s)')
 
