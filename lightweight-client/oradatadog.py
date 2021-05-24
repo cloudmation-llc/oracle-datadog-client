@@ -24,10 +24,8 @@ def convert_local_date_to_iso(date):
 def datadog_post(api_url, **kwargs):
     """Helper function to send an API POST to Datadog"""
     try:
-        print(kwargs)
         response = requests.post(api_url, json=kwargs, headers=datadog_headers)
         response.raise_for_status()
-        print(response.text)
     except:
         logger.exception('Datadog API request failed with an exception')
         raise
