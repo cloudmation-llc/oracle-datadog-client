@@ -7,6 +7,7 @@ import pytz
 import requests
 import socket
 import sys
+import traceback
 import yaml
 from loguru import logger
 from pathlib import Path
@@ -92,6 +93,11 @@ if __name__ == "__main__":
     # Set up logging program diagnostics if configured
     if log_forward_to_datadog:
         def datadog_forwarder(message):
+            # Get exception detail if present in the log message
+            exception = message.record.get('exception')
+            exception_detail = ''.join(traceback.TracebackException.from_exception(exception[1]).format()) \
+                if exception is not None else None
+
             # Send diagnostic event
             datadog_send_log_event(
                 date=convert_local_date_to_iso(message.record.get('time')),
@@ -99,7 +105,8 @@ if __name__ == "__main__":
                 hostname=socket.gethostname(),
                 message=message.record.get('message'),
                 service=logging_config.get('datadog-service'),
-                status=message.record.get('level').name)
+                status=message.record.get('level').name,
+                exception=exception_detail)
 
         logger.add(datadog_forwarder, level=log_level)
 
