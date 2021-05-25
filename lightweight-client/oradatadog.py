@@ -93,7 +93,6 @@ if __name__ == "__main__":
     # Set up logging program diagnostics if configured
     if log_forward_to_datadog:
         def datadog_forwarder(message):
-            # Get exception detail if present in the log message
             exception = message.record.get('exception')
             exception_detail = ''.join(traceback.TracebackException.from_exception(exception[1]).format()) \
                 if exception is not None else None
