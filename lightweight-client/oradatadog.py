@@ -103,51 +103,55 @@ if __name__ == "__main__":
 
         logger.add(datadog_forwarder, level=log_level)
 
-    # Connect to Oracle database
-    oracle = cx_Oracle.connect(
-        oracle_config['user'],
-        oracle_config['password'],
-        oracle_config['connection-string'],
-        encoding="UTF-8")
-    logger.debug(f'Connected to Oracle database {oracle_config["connection-string"]} as {oracle_config["user"]}')
+    # Trap errors
+    try:
+        # Connect to Oracle database
+        oracle = cx_Oracle.connect(
+            oracle_config['user'],
+            oracle_config['password'],
+            oracle_config['connection-string'],
+            encoding="UTF-8")
+        logger.debug(f'Connected to Oracle database {oracle_config["connection-string"]} as {oracle_config["user"]}')
 
-    # Query for pending events
-    with oracle.cursor() as cursor:
-        # Execute query
-        rows = cursor.execute('select rowid, datadog_lwc_queue.* from datadog_lwc_queue where queue_status = 0')
-        logger.info('Executed query to check for pending events')
+        # Query for pending events
+        with oracle.cursor() as cursor:
+            # Execute query
+            rows = cursor.execute('select rowid, datadog_lwc_queue.* from datadog_lwc_queue where queue_status = 0')
+            logger.info('Executed query to check for pending events')
 
-        # Iterate rows
-        for (rowid, timestamp, status, endpoint_type, payload_json_str) in rows:
-            logger.debug(f'Processing event {rowid}')
+            # Iterate rows
+            for (rowid, timestamp, status, endpoint_type, payload_json_str) in rows:
+                logger.debug(f'Processing event {rowid}')
 
-            # Parse event payload
-            payload = json.loads(payload_json_str)
+                # Parse event payload
+                payload = json.loads(payload_json_str)
 
-            # Select Datadog API method by endpoint type
-            if endpoint_type == 'post_event':
-                # Add an event to the dashboard
-                datadog_send_event(**payload)
+                # Select Datadog API method by endpoint type
+                if endpoint_type == 'post_event':
+                    # Add an event to the dashboard
+                    datadog_send_event(**payload)
 
-            elif endpoint_type == 'post_log_event':
-                # Ingest a log event with proper timestamp conversion
-                payload['date'] = convert_local_date_to_iso(timestamp)
-                datadog_send_log_event(**payload)
+                elif endpoint_type == 'post_log_event':
+                    # Ingest a log event with proper timestamp conversion
+                    payload['date'] = convert_local_date_to_iso(timestamp)
+                    datadog_send_log_event(**payload)
 
-            else:
-                # Skip unsupported HTTP methods
-                logger.debug(f'event {rowid}: Unsupported endpoint type {endpoint_type}')
-                continue
+                else:
+                    # Skip unsupported HTTP methods
+                    logger.debug(f'event {rowid}: Unsupported endpoint type {endpoint_type}')
+                    continue
 
-            # Update event status in queue table
-            with oracle.cursor() as update_cursor:
-                update_cursor.execute('update datadog_lwc_queue set queue_status = 1 where rowid = :rid', rid=rowid)
-                if not oracle_config.get('ignore-commit', False):
-                    oracle.commit()
-                logger.trace(f'event {rowid}: Oracle queue update completed successfully')
+                # Update event status in queue table
+                with oracle.cursor() as update_cursor:
+                    update_cursor.execute('update datadog_lwc_queue set queue_status = 1 where rowid = :rid', rid=rowid)
+                    if not oracle_config.get('ignore-commit', False):
+                        oracle.commit()
+                    logger.trace(f'event {rowid}: Oracle queue update completed successfully')
 
-        logger.info(f'Processed {cursor.rowcount} row(s)')
-
-    # Cleanup
-    oracle.close()
-    logger.debug('Disconnected from Oracle database')
+            logger.info(f'Processed {cursor.rowcount} row(s)')
+    except:
+        logger.exception('Exception occurred during program execution')
+    finally:
+        # Cleanup resources
+        oracle.close()
+        logger.debug('Disconnected from Oracle database')
