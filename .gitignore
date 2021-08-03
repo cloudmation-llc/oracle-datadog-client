@@ -19,3 +19,6 @@ lightweight-client/config/*.yml
 
 # Ignore IDEA configuration
 .idea
+
+# Ignore MacOS files
+.DS_Store
